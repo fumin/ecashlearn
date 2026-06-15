@@ -72,12 +72,12 @@ func TestWpkhAddress(t *testing.T) {
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			address, err := wpkhAddress(test.mnemonic, test.passphrase, test.derivationPath, test.humanReadablePart)
+			_, address, err := WpkhAddress(test.mnemonic, test.passphrase, test.derivationPath, test.humanReadablePart)
 			if err != nil {
 				t.Errorf("%+v", err)
 			}
 			if address != test.address {
-				t.Errorf("wpkhAddress(%s, %s, %s, %s) = %s want %s", test.mnemonic, test.passphrase, test.derivationPath, test.humanReadablePart, address, test.address)
+				t.Errorf("WpkhAddress(%s, %s, %s, %s) = %s want %s", test.mnemonic, test.passphrase, test.derivationPath, test.humanReadablePart, address, test.address)
 			}
 		})
 	}

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math/big"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,14 +16,16 @@ import (
 	"github.com/fumin/ecashlearn/crypto"
 	"github.com/fumin/ecashlearn/script"
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/cryptobyte"
+	"golang.org/x/crypto/cryptobyte/asn1"
 )
 
 const (
-	SIGHASH_DEFAULT      byte = 0
-	SIGHASH_ALL          byte = 1
-	SIGHASH_NONE         byte = 2
-	SIGHASH_SINGLE       byte = 3
-	SIGHASH_ANYONECANPAY byte = 0x80
+	SIGHASH_DEFAULT      = 0
+	SIGHASH_ALL          = 1
+	SIGHASH_NONE         = 2
+	SIGHASH_SINGLE       = 3
+	SIGHASH_ANYONECANPAY = 0x80
 )
 
 type Input struct {
@@ -64,8 +67,30 @@ type Block struct {
 	Transaction []Transaction
 }
 
+func parseSignature(signature []byte) (*big.Int, *big.Int, error) {
+	r, s := new(big.Int), new(big.Int)
+	var inner cryptobyte.String
+	input := cryptobyte.String(signature)
+	if !input.ReadASN1(&inner, asn1.SEQUENCE) {
+		return nil, nil, errors.Errorf("read tag fail")
+	}
+	if !input.Empty() {
+		return nil, nil, errors.Errorf("input not empty")
+	}
+	if !inner.ReadASN1Integer(r) {
+		return nil, nil, errors.Errorf("read r fail")
+	}
+	if !inner.ReadASN1Integer(s) {
+		return nil, nil, errors.Errorf("read s fail")
+	}
+	if !inner.Empty() {
+		return nil, nil, errors.Errorf("inner not empty")
+	}
+	return r, s, nil
+}
+
 // BIP143.
-func hashTx(tx Transaction, nIn int, prevOut Output, hashType byte) ([]byte, error) {
+func hashTx(tx Transaction, nIn int, prevOut Output, hashType int) ([]byte, error) {
 	txHash := make([]byte, 0)
 	txHash = binary.LittleEndian.AppendUint32(txHash, uint32(tx.Version))
 
@@ -106,11 +131,13 @@ func hashTx(tx Transaction, nIn int, prevOut Output, hashType byte) ([]byte, err
 	if (hashType5 != SIGHASH_SINGLE) && (hashType5 != SIGHASH_NONE) {
 		for _, out := range tx.Output {
 			outputs = binary.LittleEndian.AppendUint64(outputs, uint64(out.Amount))
+			outputs = appendVarInt(outputs, len(out.Script))
 			outputs = append(outputs, out.Script...)
 		}
 	} else if hashType5 == SIGHASH_SINGLE && nIn < len(tx.Output) {
 		out := tx.Output[nIn]
 		outputs = binary.LittleEndian.AppendUint64(outputs, uint64(out.Amount))
+		outputs = appendVarInt(outputs, len(out.Script))
 		outputs = append(outputs, out.Script...)
 	}
 	outH := crypto.DoubleSha256(outputs)
@@ -151,94 +178,112 @@ func read(fpath string, magic []byte) ([]Block, error) {
 	blocks := make([]Block, 0)
 	p := &parser{}
 	for p.offset < len(data) {
-		var b Block
 		boffset := p.offset
-		p.checkMagic(data, magic)
-		b.Size, _ = p.readInt32(data)
-
-		// Block header.
-		headerOffset := p.offset
-		b.Header.Version = p.readBytes(data, 4)
-		b.Header.PrevBlock = p.readBytes(data, 32)
-		b.Header.MerkleRoot = p.readBytesRev(data, 32)
-		b.Header.Time = p.readTime(data)
-		b.Header.Target = p.readBytesRev(data, 4)
-		b.Header.Nonce = p.readBytesRev(data, 4)
-		b.Hash = getID(data[headerOffset:p.offset])
-
-		// Transactions.
-		txLen := p.varInt(data)
-		for range txLen {
-			var tx Transaction
-			var d []byte
-			tx.Version, d = p.readInt32(data)
-			tx.ID = append(tx.ID, d...)
-			tx.Marker = p.readByte(data)
-			var segwit bool
-			if tx.Marker == 0 {
-				segwit = true
-				tx.Flag = p.readByte(data)
-			} else {
-				p.offset--
-			}
-
-			// Inputs and outputs.
-			txInputOffset := p.offset
-			inputLen := p.varInt(data)
-			for range inputLen {
-				var inp Input
-				inp.PrevTx = p.readBytes(data, 32)
-				inp.PrevTxOutIndex, _ = p.readInt32(data)
-				scriptLen := p.varInt(data)
-				inp.Script = p.readBytes(data, scriptLen)
-				inp.Sequence = p.readBytes(data, 4)
-				tx.Input = append(tx.Input, inp)
-			}
-			outputLen := p.varInt(data)
-			for range outputLen {
-				var out Output
-				out.Amount = p.readInt64(data)
-				scriptLen := p.varInt(data)
-				out.Script = p.readBytes(data, scriptLen)
-				tx.Output = append(tx.Output, out)
-			}
-			tx.ID = append(tx.ID, data[txInputOffset:p.offset]...)
-
-			// Witness.
-			if segwit {
-				for i := range inputLen {
-					itemLen := p.varInt(data)
-					for range itemLen {
-						l := p.varInt(data)
-						item := p.readBytes(data, l)
-						tx.Input[i].Witness = append(tx.Input[i].Witness, item)
-					}
-				}
-			}
-
-			tx.Locktime, d = p.readInt32(data)
-			tx.ID = append(tx.ID, d...)
-			tx.ID = getID(tx.ID)
-			b.Transaction = append(b.Transaction, tx)
-		}
-		if p.err != nil {
+		b, err := p.readBlock(data, magic)
+		if err != nil {
 			if isEndOfFile(fpath, boffset) {
 				break
 			}
-			return nil, errors.Wrap(p.err, fmt.Sprintf("block offset %d", boffset))
-		}
-		merkleRoot, mutated := computeTxMerkleRoot(b.Transaction)
-		if !bytes.Equal(merkleRoot, b.Header.MerkleRoot) {
-			return nil, errors.Errorf("merkle root got %x want %x at block %x", merkleRoot, b.Header.MerkleRoot, b.Hash)
-		}
-		if mutated {
-			return nil, errors.Errorf("merkle tree mutated at block %x", b.Hash)
+			return nil, errors.Wrap(err, fmt.Sprintf("block offset %d", boffset))
 		}
 
 		blocks = append(blocks, b)
 	}
-
 	return blocks, nil
+}
+
+func (p *parser) readBlock(data, magic []byte) (Block, error) {
+	var b Block
+	p.checkMagic(data, magic)
+	b.Size, _ = p.readInt32(data)
+
+	// Block header.
+	headerOffset := p.offset
+	b.Header.Version = p.readBytes(data, 4)
+	b.Header.PrevBlock = p.readBytes(data, 32)
+	b.Header.MerkleRoot = p.readBytesRev(data, 32)
+	b.Header.Time = p.readTime(data)
+	b.Header.Target = p.readBytesRev(data, 4)
+	b.Header.Nonce = p.readBytesRev(data, 4)
+	b.Hash = getID(data[headerOffset:p.offset])
+	if p.err != nil {
+		return Block{}, errors.Wrap(p.err, "parse header fail")
+	}
+
+	// Transactions.
+	txLen := p.varInt(data)
+	for i := range txLen {
+		tx := p.readTransaction(data)
+		if p.err != nil {
+			return Block{}, errors.Wrap(p.err, fmt.Sprintf("transaction number %d", i))
+		}
+		b.Transaction = append(b.Transaction, tx)
+	}
+
+	// Check merkle root.
+	merkleRoot, mutated := computeTxMerkleRoot(b.Transaction)
+	if !bytes.Equal(merkleRoot, b.Header.MerkleRoot) {
+		return Block{}, errors.Errorf("merkle root got %x want %x at block %x", merkleRoot, b.Header.MerkleRoot, b.Hash)
+	}
+	if mutated {
+		return Block{}, errors.Errorf("merkle tree mutated at block %x", b.Hash)
+	}
+
+	return b, nil
+}
+
+func (p *parser) readTransaction(data []byte) Transaction {
+	var tx Transaction
+	var d []byte
+	tx.Version, d = p.readInt32(data)
+	tx.ID = append(tx.ID, d...)
+	tx.Marker = p.readByte(data)
+	var segwit bool
+	if tx.Marker == 0 {
+		segwit = true
+		tx.Flag = p.readByte(data)
+	} else {
+		p.offset--
+	}
+
+	// Inputs and outputs.
+	txInputOffset := p.offset
+	inputLen := p.varInt(data)
+	for range inputLen {
+		var inp Input
+		inp.PrevTx = p.readBytes(data, 32)
+		inp.PrevTxOutIndex, _ = p.readInt32(data)
+		scriptLen := p.varInt(data)
+		inp.Script = p.readBytes(data, scriptLen)
+		inp.Sequence = p.readBytes(data, 4)
+		tx.Input = append(tx.Input, inp)
+	}
+	outputLen := p.varInt(data)
+	for range outputLen {
+		var out Output
+		out.Amount = p.readInt64(data)
+		scriptLen := p.varInt(data)
+		out.Script = p.readBytes(data, scriptLen)
+		tx.Output = append(tx.Output, out)
+	}
+	tx.ID = append(tx.ID, data[txInputOffset:p.offset]...)
+
+	// Witness.
+	if segwit {
+		for i := range inputLen {
+			itemLen := p.varInt(data)
+			for range itemLen {
+				l := p.varInt(data)
+				item := p.readBytes(data, l)
+				tx.Input[i].Witness = append(tx.Input[i].Witness, item)
+			}
+		}
+	}
+
+	tx.Locktime, d = p.readInt32(data)
+	tx.ID = append(tx.ID, d...)
+	tx.ID = getID(tx.ID)
+	return tx
 }
 
 func computeTxMerkleRoot(txs []Transaction) ([]byte, bool) {
@@ -305,6 +350,23 @@ func (p *parser) varInt(data []byte) int {
 		p.offset += 1
 		return int(b)
 	}
+}
+
+func appendVarInt(b []byte, i int) []byte {
+	switch {
+	case i < 0xfd:
+		b = append(b, byte(i))
+	case i <= 0xffff:
+		b = append(b, 0xfd)
+		b = binary.LittleEndian.AppendUint16(b, uint16(i))
+	case i <= 0xffffffff:
+		b = append(b, 0xfe)
+		b = binary.LittleEndian.AppendUint32(b, uint32(i))
+	default:
+		b = append(b, 0xff)
+		b = binary.LittleEndian.AppendUint64(b, uint64(i))
+	}
+	return b
 }
 
 func (p *parser) readTime(data []byte) time.Time {

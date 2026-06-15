@@ -21,24 +21,24 @@ var (
 	BIP32VersionTestnetPrivate, _ = hex.DecodeString("04358394")
 )
 
-func wpkhAddress(mnemonic, passphrase, derivationPath, humanReadablePart string) (string, error) {
+func WpkhAddress(mnemonic, passphrase, derivationPath, humanReadablePart string) (*bip32.Key, string, error) {
 	seed := bip39.NewSeed(mnemonic, passphrase)
 	masterKey, err := bip32.NewMasterKey(seed)
 	if err != nil {
-		return "", errors.Wrap(err, "")
+		return nil, "", errors.Wrap(err, "")
 	}
 	privKey, err := deriveKeyAtPath(masterKey, derivationPath)
 	if err != nil {
-		return "", errors.Wrap(err, "")
+		return nil, "", errors.Wrap(err, "")
 	}
 	pubKey := privKey.PublicKey()
 	witnessVersion := int(OP_0)
 	witnessProgram := crypto.Hash160(pubKey.Key)
 	address, err := bech32.SegwitAddrEncode(humanReadablePart, witnessVersion, witnessProgram)
 	if err != nil {
-		return "", errors.Wrap(err, "")
+		return nil, "", errors.Wrap(err, "")
 	}
-	return address, nil
+	return privKey, address, nil
 }
 
 func getXpub(mnemonic, passphrase, derivationPath string, version []byte) string {
@@ -66,6 +66,60 @@ func getFingerprint(mnemonic, passphrase string) string {
 	keyIdentifier := crypto.Hash160(pubKey.Key)
 	fingerprint := hex.EncodeToString(keyIdentifier)
 	return fingerprint[:8]
+}
+
+func deriveKeyAtPath(masterKey *bip32.Key, path string) (*bip32.Key, error) {
+	// Remove "m/" prefix
+	path = strings.TrimPrefix(path, "m/")
+	if path == "" || path == "m" {
+		return masterKey, nil
+	}
+
+	components := strings.Split(path, "/")
+	key := masterKey
+
+	for _, component := range components {
+		hardened := strings.HasSuffix(component, "'")
+		component = strings.TrimSuffix(component, "'")
+
+		var index uint32
+		_, err := fmt.Sscanf(component, "%d", &index)
+		if err != nil {
+			return nil, fmt.Errorf("parse path component %q: %w", component, err)
+		}
+
+		if hardened {
+			index += bip32.FirstHardenedChild
+		}
+
+		key, err = key.NewChildKey(index)
+		if err != nil {
+			return nil, fmt.Errorf("derive child %d: %w", index, err)
+		}
+	}
+
+	return key, nil
+}
+
+func polyMod(c uint64, val int) uint64 {
+	var c0 uint64 = (c >> 35)
+	c = ((c & 0x7ffffffff) << 5) ^ uint64(val)
+	if (c0 & 1) != 0 {
+		c ^= 0xf5dee51989
+	}
+	if (c0 & 2) != 0 {
+		c ^= 0xa9fdca3312
+	}
+	if (c0 & 4) != 0 {
+		c ^= 0x1bab10e32d
+	}
+	if (c0 & 8) != 0 {
+		c ^= 0x3706b1677a
+	}
+	if (c0 & 16) != 0 {
+		c ^= 0x644d626ffd
+	}
+	return c
 }
 
 func descriptorChecksum(span string) string {
@@ -105,58 +159,4 @@ func descriptorChecksum(span string) string {
 		ret[j] = checksumCharset[(c>>(5*(7-j)))&31]
 	}
 	return string(ret)
-}
-
-func polyMod(c uint64, val int) uint64 {
-	var c0 uint64 = (c >> 35)
-	c = ((c & 0x7ffffffff) << 5) ^ uint64(val)
-	if (c0 & 1) != 0 {
-		c ^= 0xf5dee51989
-	}
-	if (c0 & 2) != 0 {
-		c ^= 0xa9fdca3312
-	}
-	if (c0 & 4) != 0 {
-		c ^= 0x1bab10e32d
-	}
-	if (c0 & 8) != 0 {
-		c ^= 0x3706b1677a
-	}
-	if (c0 & 16) != 0 {
-		c ^= 0x644d626ffd
-	}
-	return c
-}
-
-func deriveKeyAtPath(masterKey *bip32.Key, path string) (*bip32.Key, error) {
-	// Remove "m/" prefix
-	path = strings.TrimPrefix(path, "m/")
-	if path == "" || path == "m" {
-		return masterKey, nil
-	}
-
-	components := strings.Split(path, "/")
-	key := masterKey
-
-	for _, component := range components {
-		hardened := strings.HasSuffix(component, "'")
-		component = strings.TrimSuffix(component, "'")
-
-		var index uint32
-		_, err := fmt.Sscanf(component, "%d", &index)
-		if err != nil {
-			return nil, fmt.Errorf("parse path component %q: %w", component, err)
-		}
-
-		if hardened {
-			index += bip32.FirstHardenedChild
-		}
-
-		key, err = key.NewChildKey(index)
-		if err != nil {
-			return nil, fmt.Errorf("derive child %d: %w", index, err)
-		}
-	}
-
-	return key, nil
 }
