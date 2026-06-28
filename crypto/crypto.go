@@ -26,10 +26,6 @@ func DoubleSha256(data []byte) []byte {
 	return b1[:]
 }
 
-func BtcToSatoshi(btc float64) int {
-	return int(btc * 1e8)
-}
-
 // From utils.go in github.com/tyler-smith/go-bip32
 // As described at https://crypto.stackexchange.com/a/8916
 func ExpandPublicKey(key []byte) (*big.Int, *big.Int) {

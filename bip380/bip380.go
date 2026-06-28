@@ -27,7 +27,7 @@ func WpkhAddress(mnemonic, passphrase, derivationPath, humanReadablePart string)
 	if err != nil {
 		return nil, "", errors.Wrap(err, "")
 	}
-	privKey, err := deriveKeyAtPath(masterKey, derivationPath)
+	privKey, err := DeriveKeyAtPath[bip32.Key](masterKey, derivationPath, bip32Derive)
 	if err != nil {
 		return nil, "", errors.Wrap(err, "")
 	}
@@ -47,7 +47,7 @@ func getXpub(mnemonic, passphrase, derivationPath string, version []byte) string
 	if err != nil {
 		return ""
 	}
-	privKey, err := deriveKeyAtPath(masterKey, derivationPath)
+	privKey, err := DeriveKeyAtPath[bip32.Key](masterKey, derivationPath, bip32Derive)
 	if err != nil {
 		return ""
 	}
@@ -68,7 +68,17 @@ func getFingerprint(mnemonic, passphrase string) string {
 	return fingerprint[:8]
 }
 
-func deriveKeyAtPath(masterKey *bip32.Key, path string) (*bip32.Key, error) {
+type DeriveFn[K any] func(key K, index uint32) (K, error)
+
+func bip32Derive(parent *bip32.Key, index uint32) (*bip32.Key, error) {
+	child, err := parent.NewChildKey(index)
+	if err != nil {
+		return nil, errors.Wrap(err, "")
+	}
+	return child, nil
+}
+
+func DeriveKeyAtPath[K any](masterKey *K, path string, derive DeriveFn[*K]) (*K, error) {
 	// Remove "m/" prefix
 	path = strings.TrimPrefix(path, "m/")
 	if path == "" || path == "m" {
@@ -92,7 +102,7 @@ func deriveKeyAtPath(masterKey *bip32.Key, path string) (*bip32.Key, error) {
 			index += bip32.FirstHardenedChild
 		}
 
-		key, err = key.NewChildKey(index)
+		key, err = derive(key, index)
 		if err != nil {
 			return nil, fmt.Errorf("derive child %d: %w", index, err)
 		}

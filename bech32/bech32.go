@@ -177,38 +177,35 @@ func convertbits(data []byte, frombits, tobits uint, pad bool) ([]byte, error) {
 	return ret, nil
 }
 
-// SegwitAddrDecode decodes hrp(human-readable part) Segwit Address(string), returns version(int) and data(bytes array) / or error
-func SegwitAddrDecode(hrp, addr string) (int, []byte, error) {
+// SegwitAddrDecode decodes Segwit Address(string), returns hrp(human-readable part), version(int) and data(bytes array) / or error
+func SegwitAddrDecode(addr string) (string, int, []byte, error) {
 	dechrp, data, enc, err := Decode(addr)
 	if err != nil {
-		return -1, nil, err
+		return "", -1, nil, err
 	}
 	if len(data) == 0 || len(data) > 65 {
-		return -1, nil, errors.Errorf("invalid len(data): %d", len(data))
-	}
-	if dechrp != hrp {
-		return -1, nil, errors.Errorf("invalid human-readable part: %s != %s", hrp, dechrp)
+		return "", -1, nil, errors.Errorf("invalid len(data): %d", len(data))
 	}
 	if data[0] > 16 {
-		return -1, nil, errors.Errorf("invalid witness version: %d", data[0])
+		return "", -1, nil, errors.Errorf("invalid witness version: %d", data[0])
 	}
 	if data[0] == 0 && enc != EncodingBech32 {
-		return -1, nil, errors.Errorf("%d != EncodingBech32", enc)
+		return "", -1, nil, errors.Errorf("%d != EncodingBech32", enc)
 	}
 	if data[0] > 0 && enc != EncodingBech32m {
-		return -1, nil, errors.Errorf("%d != EncodingBech32m", enc)
+		return "", -1, nil, errors.Errorf("%d != EncodingBech32m", enc)
 	}
 	res, err := convertbits(data[1:], 5, 8, false)
 	if err != nil {
-		return -1, nil, err
+		return "", -1, nil, err
 	}
 	if len(res) < 2 || len(res) > 40 {
-		return -1, nil, errors.Errorf("invalid convertbits length: %d", len(res))
+		return "", -1, nil, errors.Errorf("invalid convertbits length: %d", len(res))
 	}
 	if data[0] == 0 && len(res) != 20 && len(res) != 32 {
-		return -1, nil, errors.Errorf("invalid program length for witness version 0 (per BIP141): %d", len(res))
+		return "", -1, nil, errors.Errorf("invalid program length for witness version 0 (per BIP141): %d", len(res))
 	}
-	return int(data[0]), res, nil
+	return dechrp, int(data[0]), res, nil
 }
 
 // SegwitAddrEncode encodes hrp(human-readable part) , version(int) and data(bytes array), returns Segwit Address / or error

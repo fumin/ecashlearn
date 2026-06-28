@@ -121,7 +121,7 @@ func deriveKey(mnemonic, passphrase string, derivationPaths []string) (string, e
 		return "", errors.Wrap(err, "")
 	}
 	for i, path := range derivationPaths {
-		key, err = deriveKeyAtPath(key, path)
+		key, err = DeriveKeyAtPath(key, path, bip32Derive)
 		if err != nil {
 			return "", errors.Wrap(err, fmt.Sprintf("%d %s", i, path))
 		}

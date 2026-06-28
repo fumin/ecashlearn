@@ -12,6 +12,7 @@ const (
 	OP_PUSHDATA2 byte = 0x4d
 	OP_PUSHDATA4 byte = 0x4e
 	OP_1         byte = 0x51
+	OP_TRUE      byte = OP_1
 	OP_2         byte = 0x52
 	OP_3         byte = 0x53
 	OP_4         byte = 0x54
@@ -37,6 +38,8 @@ const (
 
 	OP_HASH160  byte = 0xa9
 	OP_CHECKSIG byte = 0xac
+
+	OP_NOP5 byte = 0xb4
 
 	OP_INVALIDOPCODE byte = 0xff
 )

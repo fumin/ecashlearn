@@ -183,12 +183,7 @@ func TestValidAddress(t *testing.T) {
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			hrp := HumanReadablePartMainnet
-			witver, witprog, err := SegwitAddrDecode(hrp, test.address)
-			if err != nil {
-				hrp = HumanReadablePartTestnet
-				witver, witprog, err = SegwitAddrDecode(hrp, test.address)
-			}
+			hrp, witver, witprog, err := SegwitAddrDecode(test.address)
 			if err != nil {
 				t.Errorf("%+v", err)
 			}
@@ -228,13 +223,10 @@ func TestInvalidAddress(t *testing.T) {
 	}
 	for _, invalidAddress := range invalidAddresses {
 		t.Run(invalidAddress, func(t *testing.T) {
-			hrp := HumanReadablePartMainnet
-			if _, _, err := SegwitAddrDecode(hrp, invalidAddress); err == nil {
-				t.Errorf("SegwitAddrDecode(%s, %s) should fail", hrp, invalidAddress)
-			}
-			hrp = HumanReadablePartTestnet
-			if _, _, err := SegwitAddrDecode(hrp, invalidAddress); err == nil {
-				t.Errorf("SegwitAddrDecode(%s, %s) should fail", hrp, invalidAddress)
+			hrp, _, _, err := SegwitAddrDecode(invalidAddress)
+			hrpOk := (hrp == HumanReadablePartMainnet || hrp == HumanReadablePartTestnet)
+			if err == nil && hrpOk {
+				t.Errorf("SegwitAddrDecode(%s) should fail", invalidAddress)
 			}
 		})
 	}

@@ -15,18 +15,16 @@ import (
 	"github.com/fumin/ecashlearn/bip380"
 	"github.com/fumin/ecashlearn/crypto"
 	"github.com/fumin/ecashlearn/script"
+	"github.com/fumin/ecashlearn/util"
 	"github.com/mndrix/btcutil"
-	"github.com/pkg/errors"
 )
 
 func TestTrace(t *testing.T) {
-	const challenge = "00148835832e28c816b7acd8fdb19772ab2199603a56"
-	magic, err := signetMagic(challenge)
-	if err != nil {
-		t.Errorf("%+v", err)
-	}
-	fpath := "../data/bitcoind/blk00000.dat"
-	blocks, err := read(fpath, magic)
+	const (
+		fpath     = "../data/bitcoind/blk00000.dat"
+		challenge = "00148835832e28c816b7acd8fdb19772ab2199603a56"
+	)
+	blocks, err := Read(fpath, challenge)
 	if err != nil {
 		t.Errorf("%+v", err)
 	}
@@ -84,11 +82,11 @@ func TestTrace(t *testing.T) {
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			// Find transactions.
-			tx0, err := findTx(blocks, test.tx0)
+			tx0, err := FindTx(blocks, test.tx0)
 			if err != nil {
 				t.Errorf("%+v", err)
 			}
-			tx1, err := findTx(blocks, test.tx1)
+			tx1, err := FindTx(blocks, test.tx1)
 			if err != nil {
 				t.Errorf("%+v", err)
 			}
@@ -169,7 +167,7 @@ func TestTrace(t *testing.T) {
 
 // https://learnmeabitcoin.com/technical/keys/signature/#der
 func TestParseSignature(t *testing.T) {
-	signature := hexD("3045022100e8ce5ac57296580865f3fb8cacf14c76dc8616101c909c5d806881554ae54847022013ae2cd48aa2ab3719a80a8b86d9392772aeffc3d155547313b62156be3b9709")
+	signature := util.HexD("3045022100e8ce5ac57296580865f3fb8cacf14c76dc8616101c909c5d806881554ae54847022013ae2cd48aa2ab3719a80a8b86d9392772aeffc3d155547313b62156be3b9709")
 	r, s, err := parseSignature(signature)
 	if err != nil {
 		t.Errorf("%+v", err)
@@ -194,11 +192,11 @@ func TestHashTx(t *testing.T) {
 	}{
 		// https://learnmeabitcoin.com/technical/keys/signature/#segwit-algorithm
 		{
-			rawTx:    hexD("02000000000101ac4994014aa36b7f53375658ef595b3cb2891e1735fe5b441686f5e53338e76a0100000000ffffffff01204e0000000000001976a914ce72abfd0e6d9354a660c18f2825eb392f060fdc88ac02473044022008f4f37e2d8f74e18c1b8fde2374d5f28402fb8ab7fd1cc5b786aa40851a70cb022032b1374d1a0f125eae4f69d1bc0b7f896c964cfdba329f38a952426cf427484c012103eed0d937090cae6ffde917de8a80dc6156e30b13edd5e51e2e50d52428da1c8700000000"),
+			rawTx:    util.HexD("02000000000101ac4994014aa36b7f53375658ef595b3cb2891e1735fe5b441686f5e53338e76a0100000000ffffffff01204e0000000000001976a914ce72abfd0e6d9354a660c18f2825eb392f060fdc88ac02473044022008f4f37e2d8f74e18c1b8fde2374d5f28402fb8ab7fd1cc5b786aa40851a70cb022032b1374d1a0f125eae4f69d1bc0b7f896c964cfdba329f38a952426cf427484c012103eed0d937090cae6ffde917de8a80dc6156e30b13edd5e51e2e50d52428da1c8700000000"),
 			nIn:      0,
-			output:   Output{Amount: 30000, Script: hexD("0014aa966f56de599b4094b61aa68a2b3df9e97e9c48")},
+			output:   Output{Amount: 30000, Script: util.HexD("0014aa966f56de599b4094b61aa68a2b3df9e97e9c48")},
 			hashType: SIGHASH_ALL,
-			hash:     hexD("d7b60220e1b9b2c1ab40845118baf515203f7b6f0ad83cbb68d3c89b5b3098a6"),
+			hash:     util.HexD("d7b60220e1b9b2c1ab40845118baf515203f7b6f0ad83cbb68d3c89b5b3098a6"),
 		},
 	}
 	for i, test := range tests {
@@ -220,13 +218,11 @@ func TestHashTx(t *testing.T) {
 }
 
 func TestRead(t *testing.T) {
-	const challenge = "00148835832e28c816b7acd8fdb19772ab2199603a56"
-	magic, err := signetMagic(challenge)
-	if err != nil {
-		t.Errorf("%+v", err)
-	}
-	fpath := "../data/bitcoind/blk00000.dat"
-	blocks, err := read(fpath, magic)
+	const (
+		fpath     = "../data/bitcoind/blk00000.dat"
+		challenge = "00148835832e28c816b7acd8fdb19772ab2199603a56"
+	)
+	blocks, err := Read(fpath, challenge)
 	if err != nil {
 		t.Errorf("%+v", err)
 	}
@@ -253,7 +249,7 @@ func TestRead(t *testing.T) {
 		"6704a6af112a5972311a2cf2d4202454e5cf54b358a3b18d478e1604cba36a67",
 	}
 	for i, tx := range blocks[456].Transaction {
-		if id := hex.EncodeToString(tx.ID); id != txIDs[i] {
+		if id := hex.EncodeToString(tx.ID()); id != txIDs[i] {
 			t.Errorf("tx.ID = %s want %s", id, txIDs[i])
 		}
 	}
@@ -264,27 +260,4 @@ func TestMain(m *testing.M) {
 	log.SetFlags(log.Lmicroseconds | log.Llongfile | log.LstdFlags)
 
 	m.Run()
-}
-
-func findTx(blocks []Block, txIDStr string) (Transaction, error) {
-	txID, err := hex.DecodeString(txIDStr)
-	if err != nil {
-		return Transaction{}, errors.Wrap(err, "")
-	}
-	for _, b := range blocks {
-		for _, tx := range b.Transaction {
-			if bytes.Equal(tx.ID, txID) {
-				return tx, nil
-			}
-		}
-	}
-	return Transaction{}, errors.Errorf("not found")
-}
-
-func hexD(s string) []byte {
-	b, err := hex.DecodeString(s)
-	if err != nil {
-		panic(err)
-	}
-	return b
 }

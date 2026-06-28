@@ -7,12 +7,14 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"os"
 	"path/filepath"
 	"slices"
 	"time"
 
+	"github.com/fumin/ecashlearn/bitcoin"
 	"github.com/fumin/ecashlearn/crypto"
 	"github.com/fumin/ecashlearn/script"
 	"github.com/pkg/errors"
@@ -29,26 +31,49 @@ const (
 )
 
 type Input struct {
-	PrevTx         []byte
-	PrevTxOutIndex int
-	Script         []byte
-	Sequence       []byte
-	Witness        [][]byte
+	PrevOut  bitcoin.Outpoint
+	Script   []byte
+	Sequence []byte
+	Witness  [][]byte
 }
 
 type Output struct {
-	Amount int
+	Amount bitcoin.Amount
 	Script []byte
 }
 
 type Transaction struct {
-	Version  int
+	Version  uint32
 	Marker   byte
 	Flag     byte
 	Input    []Input
 	Output   []Output
-	Locktime int
-	ID       []byte
+	LockTime uint32
+}
+
+func (t Transaction) ID() []byte {
+	id := make([]byte, 0)
+	id = binary.LittleEndian.AppendUint32(id, t.Version)
+
+	id = bitcoin.AppendVarInt(id, len(t.Input))
+	for _, inp := range t.Input {
+		id = append(id, inp.PrevOut.TxID...)
+		id = binary.LittleEndian.AppendUint32(id, inp.PrevOut.Vout)
+		id = bitcoin.AppendVarInt(id, len(inp.Script))
+		id = append(id, inp.Script...)
+		id = append(id, inp.Sequence...)
+	}
+
+	id = bitcoin.AppendVarInt(id, len(t.Output))
+	for _, out := range t.Output {
+		id = binary.LittleEndian.AppendUint64(id, out.Amount)
+		id = bitcoin.AppendVarInt(id, len(out.Script))
+		id = append(id, out.Script...)
+	}
+	id = binary.LittleEndian.AppendUint32(id, t.LockTime)
+
+	id = getID(id)
+	return id
 }
 
 type Header struct {
@@ -61,10 +86,37 @@ type Header struct {
 }
 
 type Block struct {
-	Size        int
+	Size        uint32
 	Hash        []byte
 	Header      Header
 	Transaction []Transaction
+}
+
+func Read(fpath, challenge string) ([]Block, error) {
+	magic, err := signetMagic(challenge)
+	if err != nil {
+		return nil, errors.Wrap(err, "")
+	}
+	blocks, err := read(fpath, magic)
+	if err != nil {
+		return nil, errors.Wrap(err, "")
+	}
+	return blocks, nil
+}
+
+func FindTx(blocks []Block, txIDStr string) (Transaction, error) {
+	txID, err := hex.DecodeString(txIDStr)
+	if err != nil {
+		return Transaction{}, errors.Wrap(err, "")
+	}
+	for _, b := range blocks {
+		for _, tx := range b.Transaction {
+			if bytes.Equal(tx.ID(), txID) {
+				return tx, nil
+			}
+		}
+	}
+	return Transaction{}, errors.Errorf("not found")
 }
 
 func parseSignature(signature []byte) (*big.Int, *big.Int, error) {
@@ -97,8 +149,8 @@ func hashTx(tx Transaction, nIn int, prevOut Output, hashType int) ([]byte, erro
 	if hashType&SIGHASH_ANYONECANPAY == 0 {
 		prevOuts := make([]byte, 0)
 		for _, inp := range tx.Input {
-			prevOuts = append(prevOuts, inp.PrevTx...)
-			prevOuts = binary.LittleEndian.AppendUint32(prevOuts, uint32(inp.PrevTxOutIndex))
+			prevOuts = append(prevOuts, inp.PrevOut.TxID...)
+			prevOuts = binary.LittleEndian.AppendUint32(prevOuts, inp.PrevOut.Vout)
 		}
 		prevOutsH := crypto.DoubleSha256(prevOuts)
 		txHash = append(txHash, prevOutsH...)
@@ -115,8 +167,8 @@ func hashTx(tx Transaction, nIn int, prevOut Output, hashType int) ([]byte, erro
 	}
 
 	input := tx.Input[nIn]
-	txHash = append(txHash, input.PrevTx...)
-	txHash = binary.LittleEndian.AppendUint32(txHash, uint32(input.PrevTxOutIndex))
+	txHash = append(txHash, input.PrevOut.TxID...)
+	txHash = binary.LittleEndian.AppendUint32(txHash, input.PrevOut.Vout)
 
 	scriptcode, err := p2pkhScript(prevOut.Script)
 	if err != nil {
@@ -124,26 +176,26 @@ func hashTx(tx Transaction, nIn int, prevOut Output, hashType int) ([]byte, erro
 	}
 	txHash = append(txHash, scriptcode...)
 
-	txHash = binary.LittleEndian.AppendUint64(txHash, uint64(prevOut.Amount))
+	txHash = binary.LittleEndian.AppendUint64(txHash, prevOut.Amount)
 	txHash = append(txHash, input.Sequence...)
 
 	outputs := make([]byte, 0)
 	if (hashType5 != SIGHASH_SINGLE) && (hashType5 != SIGHASH_NONE) {
 		for _, out := range tx.Output {
-			outputs = binary.LittleEndian.AppendUint64(outputs, uint64(out.Amount))
-			outputs = appendVarInt(outputs, len(out.Script))
+			outputs = binary.LittleEndian.AppendUint64(outputs, out.Amount)
+			outputs = bitcoin.AppendVarInt(outputs, len(out.Script))
 			outputs = append(outputs, out.Script...)
 		}
 	} else if hashType5 == SIGHASH_SINGLE && nIn < len(tx.Output) {
 		out := tx.Output[nIn]
-		outputs = binary.LittleEndian.AppendUint64(outputs, uint64(out.Amount))
-		outputs = appendVarInt(outputs, len(out.Script))
+		outputs = binary.LittleEndian.AppendUint64(outputs, out.Amount)
+		outputs = bitcoin.AppendVarInt(outputs, len(out.Script))
 		outputs = append(outputs, out.Script...)
 	}
 	outH := crypto.DoubleSha256(outputs)
 	txHash = append(txHash, outH...)
 
-	txHash = binary.LittleEndian.AppendUint32(txHash, uint32(tx.Locktime))
+	txHash = binary.LittleEndian.AppendUint32(txHash, tx.LockTime)
 	txHash = binary.LittleEndian.AppendUint32(txHash, uint32(hashType))
 
 	txHash = crypto.DoubleSha256(txHash)
@@ -195,7 +247,7 @@ func read(fpath string, magic []byte) ([]Block, error) {
 func (p *parser) readBlock(data, magic []byte) (Block, error) {
 	var b Block
 	p.checkMagic(data, magic)
-	b.Size, _ = p.readInt32(data)
+	b.Size = p.readInt32(data)
 
 	// Block header.
 	headerOffset := p.offset
@@ -234,9 +286,7 @@ func (p *parser) readBlock(data, magic []byte) (Block, error) {
 
 func (p *parser) readTransaction(data []byte) Transaction {
 	var tx Transaction
-	var d []byte
-	tx.Version, d = p.readInt32(data)
-	tx.ID = append(tx.ID, d...)
+	tx.Version = p.readInt32(data)
 	tx.Marker = p.readByte(data)
 	var segwit bool
 	if tx.Marker == 0 {
@@ -247,12 +297,11 @@ func (p *parser) readTransaction(data []byte) Transaction {
 	}
 
 	// Inputs and outputs.
-	txInputOffset := p.offset
 	inputLen := p.varInt(data)
 	for range inputLen {
 		var inp Input
-		inp.PrevTx = p.readBytes(data, 32)
-		inp.PrevTxOutIndex, _ = p.readInt32(data)
+		inp.PrevOut.TxID = p.readBytes(data, 32)
+		inp.PrevOut.Vout = p.readInt32(data)
 		scriptLen := p.varInt(data)
 		inp.Script = p.readBytes(data, scriptLen)
 		inp.Sequence = p.readBytes(data, 4)
@@ -266,7 +315,6 @@ func (p *parser) readTransaction(data []byte) Transaction {
 		out.Script = p.readBytes(data, scriptLen)
 		tx.Output = append(tx.Output, out)
 	}
-	tx.ID = append(tx.ID, data[txInputOffset:p.offset]...)
 
 	// Witness.
 	if segwit {
@@ -280,17 +328,15 @@ func (p *parser) readTransaction(data []byte) Transaction {
 		}
 	}
 
-	tx.Locktime, d = p.readInt32(data)
-	tx.ID = append(tx.ID, d...)
-	tx.ID = getID(tx.ID)
+	tx.LockTime = p.readInt32(data)
 	return tx
 }
 
 func computeTxMerkleRoot(txs []Transaction) ([]byte, bool) {
 	hashes := make([][]byte, 0, len(txs))
 	for _, tx := range txs {
-		buf := make([]byte, len(tx.ID))
-		copy(buf, tx.ID)
+		buf := make([]byte, len(tx.ID()))
+		copy(buf, tx.ID())
 		slices.Reverse(buf)
 		hashes = append(hashes, buf)
 	}
@@ -332,41 +378,9 @@ func (p *parser) varInt(data []byte) int {
 	if p.err != nil {
 		return -1
 	}
-	b := data[p.offset]
-	switch b {
-	case 0xfd:
-		d := data[p.offset+1 : p.offset+1+2]
-		p.offset += 3
-		return int(binary.LittleEndian.Uint16(d))
-	case 0xfe:
-		d := data[p.offset+1 : p.offset+1+4]
-		p.offset += 5
-		return int(binary.LittleEndian.Uint32(d))
-	case 0xff:
-		d := data[p.offset+1 : p.offset+1+8]
-		p.offset += 9
-		return int(binary.LittleEndian.Uint64(d))
-	default:
-		p.offset += 1
-		return int(b)
-	}
-}
-
-func appendVarInt(b []byte, i int) []byte {
-	switch {
-	case i < 0xfd:
-		b = append(b, byte(i))
-	case i <= 0xffff:
-		b = append(b, 0xfd)
-		b = binary.LittleEndian.AppendUint16(b, uint16(i))
-	case i <= 0xffffffff:
-		b = append(b, 0xfe)
-		b = binary.LittleEndian.AppendUint32(b, uint32(i))
-	default:
-		b = append(b, 0xff)
-		b = binary.LittleEndian.AppendUint64(b, uint64(i))
-	}
-	return b
+	i, n := bitcoin.DecodeVarInt(data[p.offset:])
+	p.offset += n
+	return i
 }
 
 func (p *parser) readTime(data []byte) time.Time {
@@ -409,23 +423,23 @@ func (p *parser) readByte(data []byte) byte {
 	return b
 }
 
-func (p *parser) readInt64(data []byte) int {
+func (p *parser) readInt64(data []byte) uint64 {
 	if p.err != nil {
-		return -1
+		return math.MaxUint64
 	}
 	i := binary.LittleEndian.Uint64(data[p.offset:])
 	p.offset += 8
-	return int(i)
+	return i
 }
 
-func (p *parser) readInt32(data []byte) (int, []byte) {
+func (p *parser) readInt32(data []byte) uint32 {
 	if p.err != nil {
-		return -1, nil
+		return math.MaxUint32
 	}
 	d := data[p.offset : p.offset+4]
 	i := binary.LittleEndian.Uint32(d)
 	p.offset += 4
-	return int(i), d
+	return i
 }
 
 func (p *parser) checkMagic(data []byte, magic []byte) {
