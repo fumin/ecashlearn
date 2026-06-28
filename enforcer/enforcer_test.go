@@ -69,7 +69,7 @@ func TestTrace(t *testing.T) {
 		for i := range ms {
 			ms[i].Height = height
 		}
-		d2Snapshot := d2.snapshot()
+		d2Snapshot := d2.Snapshot()
 		if err := d2.HandleMsgs(ms, height); err != nil {
 			t.Errorf("%+v", err)
 		}
@@ -79,7 +79,10 @@ func TestTrace(t *testing.T) {
 			faucetDrip := bitcoin.BtcToSats(2.1)
 			l1Coins += faucetDrip
 
-			tx := b.Transaction[findTx(b, util.HexD("ed57ebe43810c135b286aebe856bd136e69d3aee03bca14fec863fb4f180ee8e"))]
+			tx, err := blkdat.FindTx([]blkdat.Block{b}, "ed57ebe43810c135b286aebe856bd136e69d3aee03bca14fec863fb4f180ee8e")
+			if err != nil {
+				t.Errorf("%+v", err)
+			}
 			o := tx.Output[1]
 			if spk := l1ScriptPubKey(0, 0); !bytes.Equal(o.Script, spk) {
 				t.Errorf("%x != %x", o.Script, spk)
@@ -95,7 +98,10 @@ func TestTrace(t *testing.T) {
 			l1Fee := bitcoin.BtcToSats(0.0001)
 			l1Coins -= (depositAmount + l1Fee)
 
-			tx := b.Transaction[findTx(b, util.HexD("42f1cdbf2e90a8b045fc8df1c76076f23f0b8909c4fda715e76b2f8bb6002a62"))]
+			tx, err := blkdat.FindTx([]blkdat.Block{b}, "42f1cdbf2e90a8b045fc8df1c76076f23f0b8909c4fda715e76b2f8bb6002a62")
+			if err != nil {
+				t.Errorf("%+v", err)
+			}
 			o := tx.Output[2]
 			if spk := l1ScriptPubKey(1, 0); !bytes.Equal(o.Script, spk) {
 				t.Errorf("%x != %x", o.Script, spk)
@@ -121,7 +127,10 @@ func TestTrace(t *testing.T) {
 			l1Fee := bitcoin.BtcToSats(0.0001)
 			l1Coins -= (depositAmount + l1Fee)
 
-			tx := b.Transaction[findTx(b, util.HexD("5c632bb85656b27e4a140c5c81def16f36f5652a8b5c2ea413c335c4f3708b77"))]
+			tx, err := blkdat.FindTx([]blkdat.Block{b}, "5c632bb85656b27e4a140c5c81def16f36f5652a8b5c2ea413c335c4f3708b77")
+			if err != nil {
+				t.Errorf("%+v", err)
+			}
 			o := tx.Output[2]
 			if spk := l1ScriptPubKey(1, 1); !bytes.Equal(o.Script, spk) {
 				t.Errorf("%x != %x", o.Script, spk)
@@ -147,7 +156,10 @@ func TestTrace(t *testing.T) {
 			l1Fee := bitcoin.BtcToSats(0.0001)
 			l1Coins -= (sent + l1Fee)
 
-			tx := b.Transaction[findTx(b, util.HexD("2a88963f1efe7c86373aa1dbc48e2dd73664fd5eac2287c020e88969a63f093c"))]
+			tx, err := blkdat.FindTx([]blkdat.Block{b}, "2a88963f1efe7c86373aa1dbc48e2dd73664fd5eac2287c020e88969a63f093c")
+			if err != nil {
+				t.Errorf("%+v", err)
+			}
 			o := tx.Output[1]
 			if spk := l1ScriptPubKey(1, 2); !bytes.Equal(o.Script, spk) {
 				t.Errorf("%x != %x", o.Script, spk)
@@ -166,11 +178,11 @@ func TestTrace(t *testing.T) {
 		// Withdraw from thunder.
 		if height == 626 {
 			withdrawAmount := bitcoin.BtcToSats(0.01)
-			l1Fee := bitcoin.BtcToSats(0.0001)
-			l1Coins += withdrawAmount
-			l1Coins -= l1Fee
 
-			tx := b.Transaction[findTx(b, util.HexD("7a0f201ad434f5d7d23f84a0f276dfc5424634fdea9240f64757aa7f18bacfbf"))]
+			tx, err := blkdat.FindTx([]blkdat.Block{b}, "7a0f201ad434f5d7d23f84a0f276dfc5424634fdea9240f64757aa7f18bacfbf")
+			if err != nil {
+				t.Errorf("%+v", err)
+			}
 			o := tx.Output[2]
 			if spk := l1ScriptPubKey(1, 2); !bytes.Equal(o.Script, spk) {
 				t.Errorf("%x != %x", o.Script, spk)
@@ -421,15 +433,6 @@ func thunderAddr(mnemonic string, index int) []byte {
 		panic(fmt.Sprintf("%+v", err))
 	}
 	return addr
-}
-
-func findTx(b blkdat.Block, id []byte) int {
-	for i, tx := range b.Transaction {
-		if bytes.Equal(tx.ID(), id) {
-			return i
-		}
-	}
-	return -1
 }
 
 func findMsg[T M1 | M2 | M3 | M4 | M5 | M6 | M7 | M8](ms []Message) int {

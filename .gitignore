@@ -1,3 +1,4 @@
 *.swp
 .venv
 data
+lock.mdb

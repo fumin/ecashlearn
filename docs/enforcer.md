@@ -1,3 +1,15 @@
+entry point:
+    app/main.rs spawns a background thread for run_validator_mempool_task: https://github.com/LayerTwo-Labs/bip300301_enforcer/blob/8c7ea89f8f509548cc9ab49a9ca10b2d2d8ba327/app/main.rs#L1281
+    eventually goes to sync_mempool which initiates cusf_enforcer_mempool::mempool::MempoolSync::new: https://github.com/LayerTwo-Labs/bip300301_enforcer/blob/8c7ea89f8f509548cc9ab49a9ca10b2d2d8ba327/app/main.rs#L518
+    MempoolSync::new calls task_inner: https://github.com/LayerTwo-Labs/cusf-enforcer-mempool/blob/49a73a5014c5958eb563ab6c7471e686cfa7532a/lib/mempool/sync/task.rs#L1269
+    cusf-enforcer-mempool task_inner runs an infinite loop receiving block messages. Upon receiving a message it calls handle_resp: https://github.com/LayerTwo-Labs/cusf-enforcer-mempool/blob/49a73a5014c5958eb563ab6c7471e686cfa7532a/lib/mempool/sync/task.rs#L1058
+    cusf-enforcer-mempool handle_resp calls handle_resp_block: https://github.com/LayerTwo-Labs/cusf-enforcer-mempool/blob/49a73a5014c5958eb563ab6c7471e686cfa7532a/lib/mempool/sync/task.rs#L921
+    cusf-enforcer-mempool handle_resp_block calls connect_block: https://github.com/LayerTwo-Labs/cusf-enforcer-mempool/blob/49a73a5014c5958eb563ab6c7471e686cfa7532a/lib/mempool/sync/task.rs#L498
+    cusf-enforcer-mempool connect_block calls enforcer.connect_block: https://github.com/LayerTwo-Labs/cusf-enforcer-mempool/blob/49a73a5014c5958eb563ab6c7471e686cfa7532a/lib/mempool/sync/task.rs#L244
+    enforcer.connect_block is the actual entry point for bip300/301 messages: https://github.com/LayerTwo-Labs/bip300301_enforcer/blob/71978e3a22176e027a088d7efd8d44af0f04e9f1/lib/validator/task/mod.rs#L1011
+
+
+
 rust:
     lldb: https://gist.github.com/wanyakun/314690093ea195d749fca6869ebf200e
 

@@ -37,11 +37,18 @@ type M3 struct {
 	Bundle     types.M6ID
 }
 
+const (
+	M4VersionRepeatPrevious = 0
+	M4VersionOneByte        = 1
+	M4VersionTwoByte        = 2
+	M4VersionLeadingBy50    = 3
+)
+
 type M4 struct {
 	Enum           bincode.Enum `borsh_enum:"true"`
 	RepeatPrevious struct{}
 	OneByte        []uint8
-	TwoBytes       []uint16
+	TwoByte        []uint16
 	LeadingBy50    struct{}
 }
 
@@ -116,30 +123,26 @@ func parseM4(b []byte) (M4, error) {
 		return M4{}, errors.Errorf("%d < 1", len(b))
 	}
 	var m M4
-	version := b[0]
+	m.Enum = bincode.Enum(b[0])
 	b = b[1:]
-	switch version {
-	case 0:
-		m.Enum = 0
+	switch m.Enum {
+	case M4VersionRepeatPrevious:
 		if len(b) != 0 {
 			return M4{}, errors.Errorf("%d != 0", len(b))
 		}
-	case 1:
-		m.Enum = 1
+	case M4VersionOneByte:
 		m.OneByte = make([]uint8, len(b))
 		copy(m.OneByte, b)
-	case 2:
-		m.Enum = 2
+	case M4VersionTwoByte:
 		for i := 0; i < len(b); i += 2 {
 			if i+2 > len(b) {
 				return M4{}, errors.Errorf("%d > %d", i+2, len(b))
 			}
 			b2 := b[i : i+2]
 			vote := binary.LittleEndian.Uint16(b2)
-			m.TwoBytes = append(m.TwoBytes, vote)
+			m.TwoByte = append(m.TwoByte, vote)
 		}
-	case 3:
-		m.Enum = 3
+	case M4VersionLeadingBy50:
 		if len(b) != 0 {
 			return M4{}, errors.Errorf("%d != 0", len(b))
 		}
@@ -228,9 +231,9 @@ func checkBlockValidity(messages []Message) error {
 	for _, m := range messages {
 		m4, ok := m.Msg.(M4)
 		if ok {
-			if m4.Enum == 2 {
+			if m4.Enum == M4VersionTwoByte {
 				largeEnough := false
-				for _, v := range m4.TwoBytes {
+				for _, v := range m4.TwoByte {
 					if v > 253 {
 						largeEnough = true
 						break
