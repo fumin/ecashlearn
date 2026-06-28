@@ -21,7 +21,7 @@ import (
 
 func TestTrace(t *testing.T) {
 	const (
-		fpath     = "../data/bitcoind/blk00000.dat"
+		fpath     = "../testdata/bitcoind/blk00000.dat"
 		challenge = "00148835832e28c816b7acd8fdb19772ab2199603a56"
 	)
 	blocks, err := Read(fpath, challenge)
@@ -219,7 +219,7 @@ func TestHashTx(t *testing.T) {
 
 func TestRead(t *testing.T) {
 	const (
-		fpath     = "../data/bitcoind/blk00000.dat"
+		fpath     = "../testdata/bitcoind/blk00000.dat"
 		challenge = "00148835832e28c816b7acd8fdb19772ab2199603a56"
 	)
 	blocks, err := Read(fpath, challenge)

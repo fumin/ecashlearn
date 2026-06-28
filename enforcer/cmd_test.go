@@ -10,7 +10,7 @@ import (
 
 func TestListDBs(t *testing.T) {
 	t.Logf("Enforcer")
-	dbs, err := util.ListDBs("../data/enforcer/signet.mdb")
+	dbs, err := util.ListDBs("../testdata/enforcer/signet.mdb")
 	if err != nil {
 		t.Errorf("%+v", err)
 	}
@@ -23,7 +23,7 @@ func TestListDBs(t *testing.T) {
 	}
 
 	t.Logf("Thunder chain")
-	dbs, err = util.ListDBs("../data/thunder/data.mdb")
+	dbs, err = util.ListDBs("../testdata/thunder/data.mdb")
 	if err != nil {
 		t.Errorf("%+v", err)
 	}
@@ -32,7 +32,7 @@ func TestListDBs(t *testing.T) {
 	}
 
 	t.Logf("Thunder wallet")
-	dbs, err = util.ListDBs("../data/thunder/wallet.mdb")
+	dbs, err = util.ListDBs("../testdata/thunder/wallet.mdb")
 	if err != nil {
 		t.Errorf("%+v", err)
 	}
@@ -43,9 +43,9 @@ func TestListDBs(t *testing.T) {
 
 func TestScanDB(t *testing.T) {
 	// dbPath := "/home/shaoyu/.local/share/bip300301_enforcer/validator/signet/signet.mdb"
-	dbPath := "../data/enforcer/signet.mdb"
-	// dbPath := "../data/thunder/data.mdb"
-	// dbPath := "../data/thunder/wallet.mdb"
+	dbPath := "../testdata/enforcer/signet.mdb"
+	// dbPath := "../testdata/thunder/data.mdb"
+	// dbPath := "../testdata/thunder/wallet.mdb"
 	dbName := "active_sidechain_number_to_pending_m6ids"
 	contents, err := util.ScanDB(dbPath, dbName)
 	if err != nil {
@@ -59,8 +59,8 @@ func TestScanDB(t *testing.T) {
 func TestScanMsgs(t *testing.T) {
 	const (
 		challenge  = "00148835832e28c816b7acd8fdb19772ab2199603a56"
-		fpath      = "../data/bitcoind/blk00000.dat"
-		enforcerDB = "../data/enforcer/signet.mdb"
+		fpath      = "../testdata/bitcoind/blk00000.dat"
+		enforcerDB = "../testdata/enforcer/signet.mdb"
 		// fpath      = "/home/shaoyu/.drivechain/signet/blocks/blk00000.dat"
 		// enforcerDB = "/home/shaoyu/.local/share/bip300301_enforcer/validator/signet/signet.mdb"
 	)

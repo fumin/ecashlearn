@@ -23,7 +23,7 @@ import (
 )
 
 func TestWithdrawalBundles(t *testing.T) {
-	dbPath := "../data/thunder/data.mdb"
+	dbPath := "../testdata/thunder/data.mdb"
 	tests := []struct {
 		m6id       types.M6ID
 		withdrawal WithdrawalBundleIS
@@ -118,7 +118,7 @@ func TestWithdrawalBundles(t *testing.T) {
 }
 
 func TestChain(t *testing.T) {
-	dbPath := "../data/thunder/data.mdb"
+	dbPath := "../testdata/thunder/data.mdb"
 	tests := []struct {
 		blockHash []byte
 		header    Header
@@ -375,7 +375,7 @@ func TestChain(t *testing.T) {
 }
 
 func TestHeightTip(t *testing.T) {
-	dbPath := "../data/thunder/data.mdb"
+	dbPath := "../testdata/thunder/data.mdb"
 	height, err := getHeight(dbPath)
 	if err != nil {
 		t.Errorf("%+v", err)
@@ -464,7 +464,7 @@ func TestThunderWalletSeed(t *testing.T) {
 	mnemonic := "side art direct sausage exit worry minor stomach size zero dinner buzz"
 	passphrase := ""
 	mnemonicSeed := bip39.NewSeed(mnemonic, passphrase)
-	walletPath := "../data/thunder/wallet.mdb"
+	walletPath := "../testdata/thunder/wallet.mdb"
 	contents, err := util.ScanDB(walletPath, "seed")
 	if err != nil {
 		t.Errorf("%+v", err)

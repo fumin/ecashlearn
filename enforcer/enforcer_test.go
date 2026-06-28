@@ -25,8 +25,8 @@ func TestTrace(t *testing.T) {
 		l1Mnemonic      = "leisure absorb unfair bunker focus absorb hire famous hurdle describe true monitor"
 		thunderMnemonic = "side art direct sausage exit worry minor stomach size zero dinner buzz"
 
-		fpath      = "../data/bitcoind/blk00000.dat"
-		enforcerDB = "../data/enforcer/signet.mdb"
+		fpath      = "../testdata/bitcoind/blk00000.dat"
+		enforcerDB = "../testdata/enforcer/signet.mdb"
 	)
 	l1ScriptPubKey := func(change, index int) []byte {
 		// Change and index definitions are in BIP44.
@@ -214,7 +214,7 @@ func TestTrace(t *testing.T) {
 
 func TestM5(t *testing.T) {
 	const (
-		fpath     = "../data/bitcoind/blk00000.dat"
+		fpath     = "../testdata/bitcoind/blk00000.dat"
 		challenge = "00148835832e28c816b7acd8fdb19772ab2199603a56"
 	)
 	blocks, err := blkdat.Read(fpath, challenge)
@@ -314,7 +314,7 @@ func TestM5(t *testing.T) {
 
 func TestM6(t *testing.T) {
 	const (
-		fpath     = "../data/bitcoind/blk00000.dat"
+		fpath     = "../testdata/bitcoind/blk00000.dat"
 		challenge = "00148835832e28c816b7acd8fdb19772ab2199603a56"
 	)
 	blocks, err := blkdat.Read(fpath, challenge)
@@ -370,7 +370,7 @@ func TestM6(t *testing.T) {
 
 func TestThunderWallet(t *testing.T) {
 	const (
-		fpath     = "../data/bitcoind/blk00000.dat"
+		fpath     = "../testdata/bitcoind/blk00000.dat"
 		challenge = "00148835832e28c816b7acd8fdb19772ab2199603a56"
 	)
 	blocks, err := blkdat.Read(fpath, challenge)
