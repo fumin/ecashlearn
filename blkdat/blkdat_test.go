@@ -217,6 +217,48 @@ func TestHashTx(t *testing.T) {
 	}
 }
 
+func TestBlockHeight(t *testing.T) {
+	const (
+		fpath     = "../testdata/bitcoind/blk00000.dat"
+		challenge = "00148835832e28c816b7acd8fdb19772ab2199603a56"
+	)
+	blocks, err := Read(fpath, challenge)
+	if err != nil {
+		t.Errorf("%+v", err)
+	}
+	for h, b := range blocks {
+		if h <= 16 {
+			continue
+		}
+		height, err := b.Height()
+		if err != nil {
+			t.Errorf("%+v", err)
+		}
+		if height != h {
+			t.Errorf("%d != %d", height, h)
+		}
+	}
+
+	tests := []struct {
+		b      []byte
+		height int
+	}{
+		{b: util.HexD("03c027090004ff52aa5d042b05083008a6e7b35c6e202a00092f426974667572792f"), height: 600000},
+		{b: util.HexD("03bc970e1d506f7765726564206279204c75786f7220546563682d008506850ddb47fabe6d6d71df935f6146cac287c2c05ccb1ce9646525933efbdf0af1c0ff29d7bb38609410000000000000000000362600c7000000000002"), height: 956348},
+	}
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			height, err := parseHeight(test.b)
+			if err != nil {
+				t.Errorf("%+v", err)
+			}
+			if height != test.height {
+				t.Errorf("%d != %d", height, test.height)
+			}
+		})
+	}
+}
+
 func TestRead(t *testing.T) {
 	const (
 		fpath     = "../testdata/bitcoind/blk00000.dat"

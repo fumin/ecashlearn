@@ -92,6 +92,33 @@ type Block struct {
 	Transaction []Transaction
 }
 
+// Height returns the block height defined in BIP34.
+func (blk Block) Height() (int, error) {
+	cb := blk.Transaction[0]
+	inp := cb.Input[0]
+	b := inp.Script
+	height, err := parseHeight(b)
+	if err != nil {
+		return -1, errors.Wrap(err, "")
+	}
+	return height, nil
+}
+
+func parseHeight(b []byte) (int, error) {
+	l := int(b[0])
+	b = b[1:]
+	if len(b) < l {
+		return -1, errors.Errorf("%d < %d", len(b), l)
+	}
+	b = b[:l]
+
+	if 8-len(b) > 0 {
+		b = append(b, make([]byte, 8-len(b))...)
+	}
+	height := binary.LittleEndian.Uint64(b)
+	return int(height), nil
+}
+
 func Read(fpath, challenge string) ([]Block, error) {
 	magic, err := signetMagic(challenge)
 	if err != nil {
